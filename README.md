@@ -1,263 +1,113 @@
-# 🤖 AutoAnalyst — Autonomous Data Analyst Agent
+# autoanalyst
 
-> A production-ready autonomous data analyst powered by **LangGraph**, **Google BigQuery**, and **LLM (Gemini / OpenAI)**. Ask questions in plain English — the agent queries, cleans, edits, analyzes, and visualizes your data automatically.
+Talk to your BigQuery data in plain English. Ask questions, clean messy rows, edit records, get stats, generate charts — all through a single prompt.
 
-![Python](https://img.shields.io/badge/Python-3.11+-blue)
-![LangGraph](https://img.shields.io/badge/LangGraph-0.2+-green)
-![GCP](https://img.shields.io/badge/GCP-BigQuery-orange)
-![License](https://img.shields.io/badge/License-MIT-yellow)
+Built with LangGraph (agent orchestration), BigQuery (data), Gemini/OpenAI (LLM), FastAPI (backend), and Streamlit (dashboard).
 
----
+## what it does
 
-## 🎯 What This Agent Does
+You type something like *"what are the total sales by region"* and the agent:
 
-| Capability | Description |
-|---|---|
-| **Query Data** | Converts natural language → SQL, executes on BigQuery |
-| **Clean Data** | Detects nulls, duplicates, type mismatches — fixes them |
-| **Edit Data** | INSERT, UPDATE, DELETE rows via plain English |
-| **Analyze** | Statistical summaries, correlations, trend detection |
-| **Visualize** | Auto-generates charts (bar, line, scatter, heatmap) |
-| **Explain** | Every step is narrated so you understand what happened |
+1. figures out you want a query
+2. writes the SQL
+3. validates it (dry run)
+4. executes it on BigQuery
+5. explains what it did
 
----
+Same idea for cleaning ("fix nulls and duplicates"), editing ("delete cancelled orders"), analysis ("give me a summary"), and charts ("bar chart of revenue by month").
 
-## 📁 Project Structure
+It's not magic — it's a state machine. The LLM classifies your intent, picks the right path, and each node does its job. You can see every step it takes.
 
-```
-bigquery-agent/
-├── agent/
-│   ├── __init__.py
-│   ├── graph.py            # LangGraph state machine (the brain)
-│   ├── nodes.py            # All agent nodes (query, clean, edit, analyze…)
-│   ├── state.py            # Agent state definition
-│   ├── tools.py            # BigQuery tool wrappers
-│   ├── prompts.py          # All LLM prompt templates
-│   └── utils.py            # Helpers (formatting, logging)
-├── api/
-│   ├── __init__.py
-│   ├── main.py             # FastAPI server
-│   └── schemas.py          # Request/response models
-├── dashboard/
-│   └── app.py              # Streamlit UI dashboard
-├── config/
-│   ├── settings.py         # Central configuration
-│   └── logging.yaml        # Logging config
-├── scripts/
-│   ├── setup_gcp.sh        # One-command GCP setup
-│   ├── deploy.sh           # One-command Cloud Run deploy
-│   ├── seed_sample_data.py # Load sample dataset into BigQuery
-│   └── run_local.sh        # Start everything locally
-├── tests/
-│   ├── test_agent.py       # Agent integration tests
-│   └── test_tools.py       # Tool unit tests
-├── .github/
-│   └── workflows/
-│       └── deploy.yml      # CI/CD pipeline
-├── Dockerfile
-├── docker-compose.yml
-├── requirements.txt
-├── pyproject.toml
-├── Makefile
-├── .env.example
-├── .gitignore
-└── README.md
-```
+## project layout
 
----
+agent/          → the brain (graph, nodes, prompts, tools)
+api/            → FastAPI server
+dashboard/      → Streamlit chat UI
+config/         → settings, logging
+scripts/        → setup, seed data, deploy
+tests/          → pytest suite (mocked, no GCP needed)
 
-## 🚀 QUICKSTART — From Zero to Running in 10 Minutes
+## setup
 
-### Prerequisites
+You'll need Python 3.9+, a GCP account, and gcloud CLI.
 
-- Python 3.11+
-- A Google Cloud account (free tier works)
-- `gcloud` CLI installed → https://cloud.google.com/sdk/docs/install
-- Git
-
----
-
-### Step 1 — Download & Unzip
-
-```bash
-# Clone or unzip the project
-unzip bigquery-agent.zip -d bigquery-agent
-cd bigquery-agent
-```
-
-### Step 2 — Install Dependencies
-
-```bash
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-
-# Install all packages
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-```
 
-### Step 3 — Connect to GCP
-
-```bash
-# Login to Google Cloud
-gcloud auth login
-gcloud auth application-default login
-
-# Run the automated GCP setup (creates project, dataset, enables APIs)
-chmod +x scripts/setup_gcp.sh
+# this creates the BQ dataset, service account, etc.
 ./scripts/setup_gcp.sh
-```
 
-This script will:
-- Create a GCP project (or use existing)
-- Enable BigQuery, Cloud Run, Artifact Registry APIs
-- Create a BigQuery dataset called `autoanalyst`
-- Create a service account with proper permissions
-- Download the service account key to `config/service-account.json`
+# optional — loads sample sales + customer tables
+python3 scripts/seed_sample_data.py
 
-### Step 4 — Configure Environment
+Get a Gemini API key from aistudio.google.com/apikey and add it to .env:
 
-```bash
-cp .env.example .env
-# Edit .env with your values (the setup script prints them)
-```
+GOOGLE_API_KEY=your-key
+GEMINI_MODEL=gemini-2.5-flash
 
-### Step 5 — Load Sample Data (Optional)
+Or if you prefer OpenAI:
 
-```bash
-python scripts/seed_sample_data.py
-```
+LLM_PROVIDER=openai
+OPENAI_API_KEY=sk-...
 
-### Step 6 — Run Locally
+## run
 
-```bash
-# Option A: Run everything with one command
 make run
 
-# Option B: Run components separately
-# Terminal 1 — API server
-make api
+API at localhost:8000/docs, dashboard at localhost:8501.
 
-# Terminal 2 — Dashboard
-make dashboard
-```
+Or run them separately:
 
-Open http://localhost:8501 for the dashboard, or hit http://localhost:8000/docs for the API.
+make api        # just the API
+make dashboard  # just the UI
 
-### Step 7 — Push to Git
+## how the agent works
 
-```bash
-git init
-git add .
-git commit -m "feat: autonomous data analyst agent"
-git remote add origin https://github.com/YOUR_USER/bigquery-agent.git
-git branch -M main
-git push -u origin main
-```
+prompt → load_schema → router → [query|clean|edit|analyze|visualize] → explain → response
 
-### Step 8 — Deploy to GCP Cloud Run
+The router is an LLM call that classifies intent into one of six categories. Each downstream node gets the table schema + sample rows as context, generates the appropriate SQL or analysis, and writes its output to the shared state. The explain node at the end narrates everything that happened.
 
-```bash
-chmod +x scripts/deploy.sh
+Nothing is hardcoded — if your table has different columns, the agent adapts. It reads the schema every time.
+
+## deploy
+
+Docker:
+
+make docker-build
+make docker-run
+
+Cloud Run (needs Docker Desktop running):
+
 ./scripts/deploy.sh
-```
 
----
+There's also a GitHub Actions pipeline in .github/workflows/deploy.yml that runs tests and deploys on push to main. Add GCP_PROJECT_ID and GCP_SA_KEY as repo secrets.
 
-## 🧠 How the Agent Works (LangGraph Architecture)
+## api
 
-```
-┌─────────────┐
-│  User Prompt │
-└──────┬──────┘
-       │
-       ▼
-┌──────────────┐    ┌───────────────┐
-│   ROUTER     │───▶│  QUERY Node   │──▶ BigQuery SQL execution
-│  (classifies │    └───────────────┘
-│   intent)    │    ┌───────────────┐
-│              │───▶│  CLEAN Node   │──▶ Null/duplicate/type fixing
-│              │    └───────────────┘
-│              │    ┌───────────────┐
-│              │───▶│  EDIT Node    │──▶ INSERT/UPDATE/DELETE
-│              │    └───────────────┘
-│              │    ┌───────────────┐
-│              │───▶│ ANALYZE Node  │──▶ Stats, correlations, trends
-│              │    └───────────────┘
-│              │    ┌───────────────┐
-│              │───▶│   VIZ Node    │──▶ Chart generation
-└──────────────┘    └───────────────┘
-       │
-       ▼
-┌──────────────────┐
-│  EXPLAIN Node    │──▶ Narrates what was done & why
-└──────────────────┘
-       │
-       ▼
-┌──────────────────┐
-│  Response to User│
-└──────────────────┘
-```
+| method | endpoint | what it does |
+|--------|----------|--------------|
+| POST | /agent/run | send prompt, get result |
+| POST | /agent/stream | SSE stream of each step |
+| GET | /datasets | list BQ datasets |
+| GET | /tables/{dataset} | list tables |
+| GET | /schema/{dataset}/{table} | table schema + metadata |
+| GET | /health | health check |
 
-The agent uses a **state machine** pattern via LangGraph. Each node is a specialist that modifies the shared state. The router LLM call classifies the user's intent and dispatches to the right node(s) — sometimes chaining multiple (e.g., "clean the data then show me a chart of sales by region").
+## tests
 
----
+make test
 
-## 🔧 Configuration
+Everything's mocked — no GCP credentials needed to run the test suite.
 
-All config lives in `.env`:
+## things to know
 
-| Variable | Description | Example |
-|---|---|---|
-| `GCP_PROJECT_ID` | Your GCP project | `my-project-123` |
-| `GCP_LOCATION` | Region | `us-central1` |
-| `BQ_DATASET` | BigQuery dataset | `autoanalyst` |
-| `LLM_PROVIDER` | `gemini` or `openai` | `gemini` |
-| `GEMINI_MODEL` | Gemini model name | `gemini-2.0-flash` |
-| `OPENAI_API_KEY` | Only if using OpenAI | `sk-...` |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Path to SA key | `config/service-account.json` |
+- the sample data has intentional quality issues (dupes, nulls, mixed casing) so the cleaning features have something to work with
+- SQL is always validated with a dry run before execution
+- DML statements (update/delete) require a WHERE clause unless you're explicit about wanting to affect all rows
+- charts are Plotly specs generated by the LLM, rendered in the dashboard
+- the agent retries failed LLM/BQ calls with exponential backoff
 
----
+## stack
 
-## 📡 API Endpoints
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/agent/run` | Send a prompt, get full agent response |
-| `POST` | `/agent/stream` | SSE stream of agent steps |
-| `GET`  | `/datasets` | List available BigQuery datasets |
-| `GET`  | `/tables/{dataset}` | List tables in a dataset |
-| `GET`  | `/schema/{dataset}/{table}` | Get table schema |
-| `GET`  | `/health` | Health check |
-
----
-
-## 🧪 Testing
-
-```bash
-make test              # Run all tests
-make test-agent        # Agent integration tests only
-make test-tools        # Tool unit tests only
-```
-
----
-
-## 📦 Makefile Commands
-
-```bash
-make install           # Install dependencies
-make run               # Run API + Dashboard
-make api               # Run API only
-make dashboard         # Run Dashboard only
-make test              # Run tests
-make docker-build      # Build Docker image
-make docker-run        # Run in Docker
-make deploy            # Deploy to Cloud Run
-make clean             # Remove caches
-```
-
----
-
-## License
-
-MIT
+LangGraph · LangChain · Gemini 2.5 Flash · BigQuery · FastAPI · Streamlit · Plotly · Docker · Cloud Run · GitHub Actions
